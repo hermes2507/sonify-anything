@@ -3,6 +3,11 @@
 // custom AudioWorklet granular engine → space (convolver) → speakers / recorder.
 
 import { renderBytes, detectEngine } from './sox-engine.js';
+import { Quality, TIERS, isIOS } from './quality.js';
+
+// Adaptive quality (benchmark → tier; then live adjustments). See quality.js.
+const Q = new Quality({ onChange: (why) => onQualityChange(why) });
+const DPR = () => Q.dpr();
 
 const $ = (s) => document.querySelector(s);
 const $$ = (s) => [...document.querySelectorAll(s)];
@@ -60,7 +65,7 @@ function parsePattern(str) {
 }
 
 function sizeCanvas(c) {
-  const dpr = window.devicePixelRatio || 1;
+  const dpr = DPR();
   const w = Math.max(10, Math.round(c.clientWidth * dpr)), h = Math.round(c.clientHeight * dpr);
   if (c.width !== w || c.height !== h) { c.width = w; c.height = h; return true; }
   return false;
@@ -77,13 +82,13 @@ function loadBytes(bytes, name) {
   S.original = bytes.slice();
   S.mask = new Uint8Array(bytes.length);
   S.name = name;
-  S.cursor = 0; S.nibble = 0; S.sel = null; S.undo = []; S.redo = [];
+  S.cursor = 0; S.nibble = 0; S.sel = null; S.undo = []; S.redo = []; S.modified = false;
   S.region = [0, 1];
   $('#dropZone').classList.add('has-file');
   $('#hexEmpty').hidden = true;
   $('#hexScroll').scrollTop = 0;
   afterEdit({ render: true, force: true });
-  textTabLoad();
+  if (!$('#tab-text').hidden) textTabLoad();
 }
 
 async function loadFile(file) {
@@ -143,6 +148,7 @@ function patch(s, newBytes) {
   pushUndo({ type: 'patch', off: s, old, neu: newBytes.slice(), cursor: S.cursor });
   S.bytes.set(newBytes, s);
   S.mask.fill(1, s, s + newBytes.length);
+  S.modified = true;
 }
 
 // Length-changing change: replace [s, s+del) with ins
@@ -155,7 +161,7 @@ function splice(s, del, ins) {
   b.set(S.bytes.subarray(0, s)); m.set(S.mask.subarray(0, s));
   b.set(ins, s); m.fill(1, s, s + ins.length);
   b.set(S.bytes.subarray(s + del), s + ins.length); m.set(S.mask.subarray(s + del), s + ins.length);
-  S.bytes = b; S.mask = m;
+  S.bytes = b; S.mask = m; S.modified = true;
   return true;
 }
 
@@ -240,7 +246,7 @@ function afterEdit({ render = false, force = false } = {}) {
   updateHexGeometry();
   renderHex();
   updateSelBar();
-  const changed = S.bytes.length !== S.original.length || S.mask.some((x) => x);
+  const changed = S.modified || S.bytes.length !== S.original.length;
   $('#fileInfo').textContent = `${S.name} · ${fmtBytes(S.bytes.length)}${changed ? ' · modified' : ''}`;
   if (force) buildByteMap(); else debouncedMap();
   S.textStale = true;
@@ -497,7 +503,7 @@ function buildByteMap() {
     for (let v = 0; v < 256; v++) if (hist[v]) { const p = hist[v] / tot; H2 -= p * Math.log2(p); }
     ent[x] = H2 / Math.min(8, Math.log2(Math.max(2, tot)));
   }
-  g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 1.2 * (devicePixelRatio || 1);
+  g.strokeStyle = 'rgba(255,255,255,.75)'; g.lineWidth = 1.2 * DPR();
   g.beginPath();
   for (let x = 0; x < W; x++) { const y = barH - ent[x] * (barH - 3) - 1; x ? g.lineTo(x, y) : g.moveTo(x, y); }
   g.stroke();
@@ -527,7 +533,7 @@ function drawByteMap(now) {
     g.fillRect(Math.min(x(r0), x(r1)), H * 0.86, Math.max(2, Math.abs(x(r1) - x(r0))), H * 0.14);
   }
   // grains
-  const dpr = devicePixelRatio || 1;
+  const dpr = DPR();
   for (const gr of S.grains) {
     const a = 1 - (now - gr.t) / 700;
     if (a <= 0) continue;
@@ -541,15 +547,23 @@ const mapOffset = (e) => {
   const r = byteMap.getBoundingClientRect();
   return clamp(Math.floor(((e.clientX - r.left) / r.width) * S.bytes.length), 0, S.bytes.length - 1);
 };
+let mapStart = null;
+function mapJump(o) { S.cursor = o; S.sel = null; S.anchor = o; scrollToByte(o); renderHex(); updateSelBar(); }
 byteMap.addEventListener('pointerdown', (e) => {
   if (!S.bytes) return;
-  byteMap.setPointerCapture(e.pointerId);
   mapDrag = mapOffset(e);
-  S.cursor = mapDrag; S.sel = null; S.anchor = mapDrag;
-  scrollToByte(mapDrag); renderHex(); updateSelBar();
+  mapStart = { x: e.clientX, y: e.clientY, touch: e.pointerType !== 'mouse', jumped: false };
+  if (!mapStart.touch) { byteMap.setPointerCapture(e.pointerId); mapJump(mapDrag); mapStart.jumped = true; }
 });
+byteMap.addEventListener('pointerup', () => { if (mapDrag !== null && mapStart && !mapStart.jumped) mapJump(mapDrag); });
 byteMap.addEventListener('pointermove', (e) => {
   if (mapDrag === null) return;
+  if (mapStart.touch && !mapStart.jumped) {
+    const dx = Math.abs(e.clientX - mapStart.x), dy = Math.abs(e.clientY - mapStart.y);
+    if (dy > dx && dy > 6) { mapDrag = null; return; } // vertical: user is scrolling the page
+    if (dx > 6) { mapJump(mapDrag); mapStart.jumped = true; }
+    else return;
+  }
   const o = mapOffset(e);
   if (Math.abs(o - mapDrag) > S.bytes.length / 400) { S.sel = [mapDrag, o]; S.cursor = o; renderHex(); updateSelBar(); }
 });
@@ -587,7 +601,7 @@ function textTabApply() {
   pushUndo({ type: 'full', bytes: S.bytes, mask: S.mask, cursor: S.cursor });
   const m = new Uint8Array(nb.length);
   for (let i = 0; i < nb.length; i++) m[i] = i >= S.bytes.length || S.bytes[i] !== nb[i] ? 1 : S.mask[i];
-  S.bytes = nb; S.mask = m; S.sel = null;
+  S.bytes = nb; S.mask = m; S.sel = null; S.modified = true;
   afterEdit({ render: true });
   S.textStale = false;
   toast('Text applied');
@@ -623,7 +637,12 @@ async function renderSox() {
     const [a, b] = [Math.min(...S.sel), Math.max(...S.sel)];
     start = a; len = b - a + 1;
   }
+  await ensureAudio();
   const q = soxParams();
+  const sr = ctx.sampleRate;
+  q.set('outrate', [44100, 48000, 88200, 96000].includes(sr) ? sr : 44100);
+  q.set('bits', String(Q.s.bits));
+  q.set('rateq', Q.s.rateq);
   const fmt = q.get('format'), rate = +q.get('rate');
   const ch = fmt === 'vox' || fmt === 'ima' ? 1 : +q.get('channels');
   const rawDur = len / (BPF[fmt] * ch) / rate;
@@ -640,8 +659,12 @@ async function renderSox() {
     S.renderMs = performance.now() - t0;
     if (seq !== renderSeq) return;
     S.wavBlob = new Blob([ab], { type: 'audio/wav' });
-    await ensureAudio();
-    const buf = await ctx.decodeAudioData(ab.slice(0));
+    let buf;
+    try { buf = await ctx.decodeAudioData(ab.slice(0)); }
+    catch (e) {
+      if (Q.s.bits === 24) { Q.s.bits = 16; toast('This browser can\'t decode 24-bit WAV — using 16-bit'); return renderSox(); }
+      throw e;
+    }
     if (seq !== renderSeq) return;
     S.audioBuf = buf;
     S.map = { start, len, cover: Math.min(1, maxdur / rawDur), reverse: q.get('reverse') === '1' };
@@ -693,7 +716,7 @@ function download(blob, name) {
 /* =========================== audio graph =========================== */
 let ctx = null, granNode = null, master, dry, wet, conv, analyser, recDest, vuL, vuR;
 
-function makeImpulse(seconds = 4.5, decay = 2.6) {
+function makeImpulse(seconds = Q.s.irSec, decay = 2.6) {
   const len = Math.floor(ctx.sampleRate * seconds), ir = ctx.createBuffer(2, len, ctx.sampleRate);
   for (let c = 0; c < 2; c++) {
     const d = ir.getChannelData(c);
@@ -708,7 +731,12 @@ function makeImpulse(seconds = 4.5, decay = 2.6) {
 
 async function ensureAudio() {
   if (ctx) return;
-  ctx = new AudioContext({ latencyHint: 'playback' });
+  try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
+  ctx = new AudioContext({ latencyHint: Q.s.latency });
+  const revive = () => { if ((S.playing || S.direct) && ctx.state !== 'running') ctx.resume().catch(() => {}); };
+  ctx.addEventListener('statechange', () => { if (ctx.state === 'interrupted') setTimeout(revive, 500); });
+  document.addEventListener('visibilitychange', () => { if (!document.hidden) revive(); });
+  window.addEventListener('pointerdown', revive, { passive: true });
   await ctx.audioWorklet.addModule('granular-worklet.js');
   granNode = new AudioWorkletNode(ctx, 'granular', { numberOfInputs: 0, outputChannelCount: [2] });
   master = ctx.createGain();
@@ -726,6 +754,7 @@ async function ensureAudio() {
     const m = e.data;
     if (m.type !== 'tick') return;
     S.playhead = m.playhead; S.voices = m.voices;
+    if (typeof m.load === 'number') Q.reportDSP(m.load);
     const now = performance.now();
     for (let i = 0; i < m.grains.length; i += 4) {
       S.grains.push({ pos: m.grains[i], pan: m.grains[i + 1], size: m.grains[i + 2], t: now });
@@ -760,6 +789,8 @@ function sendParams() {
     gain: gval('gain'),
     window: $('#g-window').value,
     scale: $('#g-scale').value,
+    maxVoices: Q.voiceCap,
+    interp: Q.s.interp,
   };
   granNode.port.postMessage({ type: 'params', params: p });
   const sp = gval('space'), t = ctx.currentTime;
@@ -898,7 +929,7 @@ function buildPeaks() {
 
 function drawWave(now) {
   sizeCanvas(wave);
-  const g = wave.getContext('2d'), W = wave.width, H = wave.height, mid = H / 2, dpr = devicePixelRatio || 1;
+  const g = wave.getContext('2d'), W = wave.width, H = wave.height, mid = H / 2, dpr = DPR();
   g.fillStyle = COL.well; g.fillRect(0, 0, W, H);
   if (!S.audioBuf) {
     g.fillStyle = COL.dim; g.font = `${11 * dpr}px Silkscreen, ui-monospace, monospace`; g.textAlign = 'center';
@@ -906,8 +937,18 @@ function drawWave(now) {
     return;
   }
   if (!S.peaks || S.peaks.W !== W) buildPeaks();
-  const { mins, maxs, rms } = S.peaks;
   const [r0, r1] = [Math.min(...S.region), Math.max(...S.region)];
+  const key = `${W}x${H}:${r0}:${r1}`;
+  if (!S.waveBase || S.waveBase.key !== key || S.waveBase.peaks !== S.peaks) S.waveBase = drawWaveBase(W, H, r0, r1, dpr, key);
+  g.drawImage(S.waveBase.canvas, 0, 0);
+  drawWaveOverlay(g, W, H, mid, dpr, r0, r1, now);
+}
+
+function drawWaveBase(W, H, r0, r1, dpr, key) {
+  const c = document.createElement('canvas'); c.width = W; c.height = H;
+  const g = c.getContext('2d'), mid = H / 2;
+  g.fillStyle = COL.well; g.fillRect(0, 0, W, H);
+  const { mins, maxs, rms } = S.peaks;
   // sample-editor grid: a line per second, brighter every 4
   const dur = S.audioBuf.duration, stepS = dur > 120 ? 10 : dur > 30 ? 5 : 1;
   for (let t = stepS, k = 1; t < dur; t += stepS, k++) {
@@ -926,6 +967,14 @@ function drawWave(now) {
   g.fillStyle = COL.amber;
   g.fillRect(r0 * W, 0, dpr * 1.5, H); g.fillRect(r1 * W - dpr * 1.5, 0, dpr * 1.5, H);
   g.fillRect(r0 * W, 0, 6 * dpr, 3 * dpr); g.fillRect(r1 * W - 6 * dpr, 0, 6 * dpr, 3 * dpr);
+  // time labels
+  g.fillStyle = '#6b665c'; g.font = `${10 * dpr}px "JetBrains Mono", ui-monospace, monospace`; g.textAlign = 'left';
+  g.fillText('0s', 4 * dpr, H - 5 * dpr);
+  g.textAlign = 'right'; g.fillText(S.audioBuf.duration.toFixed(1) + 's', W - 4 * dpr, H - 5 * dpr);
+  return { canvas: c, key, peaks: S.peaks };
+}
+
+function drawWaveOverlay(g, W, H, mid, dpr, r0, r1, now) {
   // grains
   for (const gr of S.grains) {
     const a = 1 - (now - gr.t) / 900;
@@ -944,10 +993,6 @@ function drawWave(now) {
     const t = (ctx.currentTime - S.direct.t0) % S.audioBuf.duration;
     g.fillStyle = COL.cyan; g.fillRect((t / S.audioBuf.duration) * W, 0, dpr, H);
   }
-  // time labels
-  g.fillStyle = '#6b665c'; g.font = `${10 * dpr}px "JetBrains Mono", ui-monospace, monospace`; g.textAlign = 'left';
-  g.fillText('0s', 4 * dpr, H - 5 * dpr);
-  g.textAlign = 'right'; g.fillText(S.audioBuf.duration.toFixed(1) + 's', W - 4 * dpr, H - 5 * dpr);
 }
 
 let waveDrag = null;
@@ -955,10 +1000,11 @@ const waveFrac = (e) => { const r = wave.getBoundingClientRect(); return clamp((
 wave.addEventListener('pointerdown', (e) => {
   if (!S.audioBuf) return;
   wave.setPointerCapture(e.pointerId);
-  waveDrag = { x0: e.clientX, f0: waveFrac(e), moved: false };
+  waveDrag = { x0: e.clientX, y0: e.clientY, f0: waveFrac(e), moved: false };
 });
 wave.addEventListener('pointermove', (e) => {
   if (!waveDrag) return;
+  if (!waveDrag.moved && e.pointerType !== 'mouse' && Math.abs(e.clientY - waveDrag.y0) > Math.abs(e.clientX - waveDrag.x0)) { waveDrag = null; return; }
   if (Math.abs(e.clientX - waveDrag.x0) > 6) waveDrag.moved = true;
   if (waveDrag.moved) { S.region = [Math.min(waveDrag.f0, waveFrac(e)), Math.max(waveDrag.f0, waveFrac(e))]; sendParams(); }
 });
@@ -983,12 +1029,25 @@ wave.addEventListener('pointerup', (e) => {
 $('#regionReset').addEventListener('click', () => { S.region = [0, 1]; sendParams(); });
 wave.addEventListener('dblclick', () => { S.region = [0, 1]; sendParams(); });
 
-$('#granSelBtn').addEventListener('click', () => {
+$('#granSelBtn').addEventListener('click', async () => {
   if (!S.sel || !S.map) return toast(S.map ? 'Select some bytes first' : 'Render first', true);
   const [a, b] = [Math.min(...S.sel), Math.max(...S.sel)];
+  const m = S.map;
+  const raw0 = (a - m.start) / m.len / m.cover, raw1 = (b + 1 - m.start) / m.len / m.cover;
+  if (raw0 < -1e-9 || raw1 > 1 + 1e-9) {
+    // part of the selection isn't in the current render (max length / render range): render just these bytes
+    $('#sx-selonly').checked = true;
+    toast(`Rendering the ${fmtBytes(b - a + 1)} selected with SoX…`);
+    await renderSox();
+    S.region = [0, 1]; sendParams();
+    const used = Math.round((b - a + 1) * Math.min(1, S.map.cover));
+    toast(S.map.cover < 1
+      ? `Rendered the first ${fmtBytes(used)} of the selection — raise "max length" or the sample rate to hear all ${fmtBytes(b - a + 1)}`
+      : `Grains now read from the ${fmtBytes(b - a + 1)} selected ("selection only" is on)`);
+    return;
+  }
   let f0 = byteToFrac(a), f1 = byteToFrac(b + 1);
   [f0, f1] = [clamp(Math.min(f0, f1), 0, 1), clamp(Math.max(f0, f1), 0, 1)];
-  if (f1 - f0 < 0.0005) return toast('Selection is outside the rendered audio (check max length / render range)', true);
   S.region = [f0, f1]; sendParams();
   toast(`Grains now read from ${fmtBytes(b - a + 1)} of data`);
 });
@@ -997,7 +1056,7 @@ $('#granSelBtn').addEventListener('click', () => {
 const vu = $('#vu'), vuBuf = new Float32Array(512), vuPeak = [0, 0], vuHold = [0, 0];
 function drawVU() {
   sizeCanvas(vu);
-  const g = vu.getContext('2d'), W = vu.width, H = vu.height, dpr = devicePixelRatio || 1;
+  const g = vu.getContext('2d'), W = vu.width, H = vu.height, dpr = DPR();
   g.fillStyle = COL.well; g.fillRect(0, 0, W, H);
   const segs = Math.max(8, Math.floor(W / (5 * dpr))), sw = W / segs, rowH = (H - 3 * dpr) / 2;
   [vuL, vuR].forEach((an, c) => {
@@ -1024,15 +1083,21 @@ function updateLCDs() {
   const vox = String(S.playing ? S.voices : 0).padStart(3, '0');
   const len = S.audioBuf ? S.audioBuf.duration.toFixed(1) + 's' : '--.-s';
   const reg = `${String(Math.round(r0 * 100)).padStart(3, '0')}–${String(Math.round(r1 * 100)).padStart(3, '0')}%`;
-  const key = pos + vox + len + reg;
+  const dsp = S.playing ? String(Math.min(999, Math.round(Q.dspLoad * 100))).padStart(2, '0') + '%' : '--%';
+  const key = pos + vox + len + reg + dsp;
   if (key === lcdCache) return;
   lcdCache = key;
+  $('#lcdDsp').textContent = dsp;
   $('#lcdPos').textContent = pos; $('#lcdVox').textContent = vox; $('#lcdLen').textContent = len; $('#lcdReg').textContent = reg;
 }
 
 const scope = $('#scope');
-let scopeData = null, lastPlayRangeUpdate = 0;
+let scopeData = null, lastPlayRangeUpdate = 0, lastFrame = 0, skip = false;
 function frame(now) {
+  Q.frame(now - lastFrame); lastFrame = now;
+  Q.tick(S.playing);
+  skip = Q.fps < 60 ? !skip : false;
+  if (skip) { requestAnimationFrame(frame); return; }
   drawWave(now);
   drawByteMap(now);
   if (analyser) {
@@ -1042,7 +1107,7 @@ function frame(now) {
     analyser.getFloatTimeDomainData(scopeData);
     g.fillStyle = COL.well; g.fillRect(0, 0, W, H);
     g.fillStyle = '#1a2410'; g.fillRect(0, H / 2, W, 1);
-    g.strokeStyle = COL.lcd; g.lineWidth = devicePixelRatio || 1; g.beginPath();
+    g.strokeStyle = COL.lcd; g.lineWidth = DPR(); g.beginPath();
     for (let i = 0; i < scopeData.length; i++) { const x = (i / scopeData.length) * W, y = H / 2 - scopeData[i] * H * 0.45; i ? g.lineTo(x, y) : g.moveTo(x, y); }
     g.stroke();
   }
@@ -1073,7 +1138,7 @@ $('#redoBtn').addEventListener('click', redo);
 $('#revertBtn').addEventListener('click', () => {
   if (!S.bytes) return;
   pushUndo({ type: 'full', bytes: S.bytes, mask: S.mask, cursor: S.cursor });
-  S.bytes = S.original.slice(); S.mask = new Uint8Array(S.bytes.length); S.sel = null;
+  S.bytes = S.original.slice(); S.mask = new Uint8Array(S.bytes.length); S.sel = null; S.modified = false;
   afterEdit({ render: true });
 });
 $('#saveBytesBtn').addEventListener('click', () => S.bytes && download(new Blob([S.bytes]), 'edited_' + (S.name.replace(/[^\w.-]+/g, '_') || 'data')));
@@ -1106,3 +1171,30 @@ detectEngine().then((eng) => {
   $('#soxStatus').innerHTML = '<span class="led"></span><span>SoX failed to load</span>';
   toast('Could not start SoX: ' + err.message, true);
 });
+
+/* =========================== adaptive quality =========================== */
+let voiceToastShown = false;
+function showQuality() {
+  const sel = $('#qualitySel');
+  sel.value = Q.mode;
+  sel.options[0].textContent = `Auto (${TIERS[Q.autoTier].label})`;
+  $('#qualityInfo').textContent = `${Q.describe()} · ${Q.s.interp} interpolation · up to ${Q.voiceCap} voices · SoX ${Q.s.bits}-bit${Q.s.rateq ? ' HQ resampling' : ''} · score ${Math.round(Q.score)}${isIOS ? ' · iOS' : ''}`;
+}
+function onQualityChange(why) {
+  if (why === 'tier') {
+    sendParams();
+    if (ctx) conv.buffer = makeImpulse();
+    S.peaks = null; S.waveBase = null; buildByteMap();
+    if (S.bytes) renderSox();
+    toast(`Quality: ${Q.describe()}`);
+  } else if (why.startsWith('voices')) {
+    sendParams();
+    if (why === 'voices-down' && !voiceToastShown) { voiceToastShown = true; toast(`Audio engine busy — capping grains at ${Q.voiceCap} voices to keep playback smooth`); }
+  } else {
+    S.peaks = null; S.waveBase = null; buildByteMap();
+  }
+  showQuality();
+}
+$('#qualitySel').addEventListener('change', (e) => Q.setMode(e.target.value));
+showQuality();
+window.__sonify = { Q }; // handy for debugging in the console

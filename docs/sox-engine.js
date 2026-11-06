@@ -38,7 +38,11 @@ export function buildArgs(q, inPath, outPath) {
   const inp = [...FORMATS[fmt], '-r', String(rate)];
   if (!adpcm) inp.push('-c', String(chans));
 
-  const fx = ['trim', '0', g(maxdur), 'rate', '44100', 'highpass', '15', 'channels', '2'];
+  // output quality (adaptive): device sample rate, bit depth, resampler quality
+  const outrate = [44100, 48000, 88200, 96000].includes(+q.get('outrate')) ? q.get('outrate') : '44100';
+  const bits = q.get('bits') === '24' ? '24' : '16';
+  const rateArgs = q.get('rateq') === 'v' ? ['rate', '-v', outrate] : ['rate', outrate];
+  const fx = ['trim', '0', g(maxdur), ...rateArgs, 'highpass', '15', 'channels', '2'];
   if (flag(q, 'reverse')) fx.push('reverse');
   const speed = num(q, 'speed', 1, 0.1, 4);
   if (Math.abs(speed - 1) > 1e-3) fx.push('speed', g(speed));
@@ -65,7 +69,7 @@ export function buildArgs(q, inPath, outPath) {
   if (rev) fx.push('reverb', String(rev), '50', '100');
   fx.push('norm', '-1', 'fade', 't', '0.02');
 
-  return { args: ['-V1', ...inp, inPath, '-t', 'wav', '-r', '44100', '-b', '16', outPath, ...fx], fmt, rate, chans };
+  return { args: ['-V1', ...inp, inPath, '-t', 'wav', '-r', outrate, '-b', bits, outPath, ...fx], fmt, rate, chans };
 }
 
 // SoX needs whole frames; pad with zeros so odd lengths don't error.

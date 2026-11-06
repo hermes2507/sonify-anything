@@ -22,6 +22,16 @@
       </div>
     </div>
     <div class="file-info" id="fileInfo">no file loaded</div>
+    <label class="quality" title="Sound quality and visual detail. Auto picks a level from a quick benchmark of this device and keeps adjusting while you play.">
+      <span class="hide-sm">quality</span>
+      <select id="qualitySel" aria-label="Quality">
+        <option value="auto">Auto</option>
+        <option value="ultra">Ultra</option>
+        <option value="high">High</option>
+        <option value="balanced">Balanced</option>
+        <option value="eco">Eco</option>
+      </select>
+    </label>
     <div class="status" id="soxStatus"><span class="led"></span><span>checking SoX…</span></div>
   </div>
 
@@ -35,6 +45,7 @@
       <div class="lcd" title="Playhead position in the grain region"><span>pos</span><b id="lcdPos">--.-</b></div>
       <div class="lcd" title="Grains sounding right now"><span>vox</span><b id="lcdVox">000</b></div>
       <div class="lcd hide-sm" title="Length of the SoX render"><span>len</span><b id="lcdLen">--.-s</b></div>
+      <div class="lcd hide-xs" title="Audio engine load (share of the real-time budget). Grain voices are reduced automatically above ~55%."><span>dsp</span><b id="lcdDsp">--%</b></div>
     </div>
     <canvas id="scope" class="hide-xs" aria-hidden="true"></canvas>
     <canvas id="vu" aria-label="Output level"></canvas>
@@ -276,6 +287,12 @@
 </main>
 
 <div class="drop-overlay" id="dropOverlay"><div>drop to sonify</div></div>
+<footer class="foot">
+  <span>Made by Santiago Rentería with <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a></span>
+  <span>Powered by <a href="https://sourceforge.net/projects/sox/" target="_blank" rel="noopener">SoX</a> (GPL v2) compiled to WebAssembly with Emscripten</span>
+  <span><a href="https://github.com/hermes2507/sonify-anything" target="_blank" rel="noopener">Source &amp; credits</a> · MIT</span>
+  <span class="muted" id="qualityInfo"></span>
+</footer>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="app.js" type="module"></script>
 </body>

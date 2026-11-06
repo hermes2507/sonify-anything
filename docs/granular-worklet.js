@@ -3,6 +3,8 @@
 // this processor spawns overlapping windowed grains read from that buffer.
 
 const TABLE = 2048;
+const KNEE = 0.6;
+const softClip = (x) => (x > 0 ? 1 : -1) * (KNEE + (1 - KNEE) * Math.tanh((Math.abs(x) - KNEE) / (1 - KNEE)));
 
 function makeWindows() {
   const w = {};
@@ -71,7 +73,9 @@ class GranularProcessor extends AudioWorkletProcessor {
       pitch: 0, pitchJitter: 0, scale: 'free',
       reverseProb: 0, spread: 0.6, window: 'hann',
       scan: 0, gain: 0.8,
+      maxVoices: 256, interp: 'linear',
     };
+    this.busyMs = 0; this.blocks = 0; this.load = 0;
     this.port.onmessage = (e) => {
       const m = e.data;
       if (m.type === 'buffer') {
@@ -80,6 +84,7 @@ class GranularProcessor extends AudioWorkletProcessor {
       } else if (m.type === 'params') {
         const prevPos = this.p.position;
         Object.assign(this.p, m.params);
+        if (this.voices.length > this.p.maxVoices) this.voices.splice(0, this.voices.length - this.p.maxVoices);
         if (m.params.position !== undefined && m.params.position !== prevPos) this.playhead = this.p.position;
       } else if (m.type === 'run') {
         this.running = m.value;
@@ -119,6 +124,19 @@ class GranularProcessor extends AudioWorkletProcessor {
   }
 
   process(_inputs, outputs) {
+    const t0 = Date.now();
+    const r = this.render(outputs);
+    // DSP load = time spent / real-time budget. Date.now() is coarse (1 ms) but
+    // averaging over thousands of blocks gives an unbiased estimate.
+    this.busyMs += Date.now() - t0;
+    if (++this.blocks >= 375) { // ~1 s at 48 kHz
+      this.load = this.busyMs / ((this.blocks * 128 / sampleRate) * 1000);
+      this.busyMs = 0; this.blocks = 0;
+    }
+    return r;
+  }
+
+  render(outputs) {
     const out = outputs[0];
     const oL = out[0], oR = out[1] || out[0];
     const frames = oL.length;
@@ -133,7 +151,7 @@ class GranularProcessor extends AudioWorkletProcessor {
       while (true) {
         if (this.countdown > frames - f) { this.countdown -= frames - f; break; }
         f += this.countdown;
-        if (this.voices.length < this.maxVoices) this.spawn(f);
+        if (this.voices.length < this.p.maxVoices) this.spawn(f);
         const base = sampleRate / Math.max(0.1, p.density);
         const jitter = 1 + (Math.random() * 2 - 1) * p.irregularity;
         this.countdown = Math.max(1, Math.floor(base * jitter));
@@ -143,34 +161,53 @@ class GranularProcessor extends AudioWorkletProcessor {
       this.playhead -= Math.floor(this.playhead);
     }
 
-    const L = this.L, R = this.R, n = L ? L.length : 0;
+    const L = this.L, R = this.R, n = L ? L.length : 0, cubic = p.interp === 'cubic';
     for (let v = this.voices.length - 1; v >= 0; v--) {
       const g = this.voices[v];
-      const win = g.win;
-      for (let i = 0; i < frames; i++) {
-        const age = g.age + i;
-        if (age < 0) continue;
-        if (age >= g.len) break;
-        let pos = g.pos + age * g.rate;
-        pos = ((pos % n) + n) % n;
-        const i0 = pos | 0, fr = pos - i0, i1 = i0 + 1 < n ? i0 + 1 : 0;
-        const w = win[((age / g.len) * TABLE) | 0];
-        oL[i] += (L[i0] + (L[i1] - L[i0]) * fr) * w * g.gl;
-        oR[i] += (R[i0] + (R[i1] - R[i0]) * fr) * w * g.gr;
+      const win = g.win, gl = g.gl, gr = g.gr, rate = g.rate, wStep = TABLE / g.len;
+      let i = g.age < 0 ? -g.age : 0;
+      const end = Math.min(frames, g.len - g.age);
+      let pos = g.pos + (g.age + i) * rate;
+      pos -= Math.floor(pos / n) * n; // wrap once, then incrementally
+      let wi = (g.age + i) * wStep;
+      if (cubic) {
+        // 4-point Hermite: cleaner than linear when grains are pitched up/down
+        for (; i < end; i++) {
+          const i0 = pos | 0, fr = pos - i0;
+          const im = i0 > 0 ? i0 - 1 : n - 1, i1 = i0 + 1 < n ? i0 + 1 : 0, i2 = i1 + 1 < n ? i1 + 1 : 0;
+          const w = win[wi | 0];
+          let a = L[im], b = L[i0], c = L[i1], d = L[i2];
+          oL[i] += (((((0.5 * (d - a) + 1.5 * (b - c)) * fr + (a - 2.5 * b + 2 * c - 0.5 * d)) * fr + 0.5 * (c - a)) * fr) + b) * w * gl;
+          a = R[im]; b = R[i0]; c = R[i1]; d = R[i2];
+          oR[i] += (((((0.5 * (d - a) + 1.5 * (b - c)) * fr + (a - 2.5 * b + 2 * c - 0.5 * d)) * fr + 0.5 * (c - a)) * fr) + b) * w * gr;
+          pos += rate; wi += wStep;
+          if (pos >= n) pos -= n; else if (pos < 0) pos += n;
+        }
+      } else {
+        for (; i < end; i++) {
+          const i0 = pos | 0, fr = pos - i0, i1 = i0 + 1 < n ? i0 + 1 : 0;
+          const w = win[wi | 0];
+          oL[i] += (L[i0] + (L[i1] - L[i0]) * fr) * w * gl;
+          oR[i] += (R[i0] + (R[i1] - R[i0]) * fr) * w * gr;
+          pos += rate; wi += wStep;
+          if (pos >= n) pos -= n; else if (pos < 0) pos += n;
+        }
       }
       g.age += frames;
       if (g.age >= g.len) this.voices.splice(v, 1);
     }
 
     // gentle soft clip
+    // soft clip: transparent below ±0.6, then a smooth (C1-continuous) knee to ±1
     for (let i = 0; i < frames; i++) {
-      oL[i] = Math.tanh(oL[i]);
-      if (oR !== oL) oR[i] = Math.tanh(oR[i]);
+      const l = oL[i], r = oR[i];
+      if (l > 0.6 || l < -0.6) oL[i] = softClip(l);
+      if (oR !== oL && (r > 0.6 || r < -0.6)) oR[i] = softClip(r);
     }
 
     if (currentTime - this.lastPost > 0.033) {
       this.lastPost = currentTime;
-      this.port.postMessage({ type: 'tick', playhead: this.playhead, voices: this.voices.length, grains: this.events });
+      this.port.postMessage({ type: 'tick', playhead: this.playhead, voices: this.voices.length, grains: this.events, load: this.load });
       this.events = [];
     }
     return true;

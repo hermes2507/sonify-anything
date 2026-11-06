@@ -73,7 +73,13 @@ def build_command(q, in_path, out_path):
     if fmt not in ("vox", "ima"):
         inp += ["-c", str(chans)]
 
-    fx = ["trim", "0", f"{maxdur:g}", "rate", "44100", "highpass", "15", "channels", "2"]
+    # output quality (adaptive, chosen by the browser): sample rate, bit depth, resampler
+    outrate = q.get("outrate", ["44100"])[0]
+    if outrate not in ("44100", "48000", "88200", "96000"):
+        outrate = "44100"
+    bits = "24" if q.get("bits", ["16"])[0] == "24" else "16"
+    rate_args = ["rate", "-v", outrate] if q.get("rateq", [""])[0] == "v" else ["rate", outrate]
+    fx = ["trim", "0", f"{maxdur:g}", *rate_args, "highpass", "15", "channels", "2"]
 
     if flag(q, "reverse"):
         fx += ["reverse"]
@@ -116,7 +122,7 @@ def build_command(q, in_path, out_path):
         fx += ["reverb", str(rev), "50", "100"]
     fx += ["norm", "-1", "fade", "t", "0.02"]
 
-    cmd = [SOX, "-V1", *inp, in_path, "-t", "wav", "-r", "44100", "-b", "16", out_path, *fx]
+    cmd = [SOX, "-V1", *inp, in_path, "-t", "wav", "-r", outrate, "-b", bits, out_path, *fx]
     return cmd, fmt, rate, chans
 
 
