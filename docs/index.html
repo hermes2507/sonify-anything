@@ -1,0 +1,282 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#141414">
+<title>Sonify Anything</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%224%22 fill=%22%23262626%22/%3E%3Crect x=%225%22 y=%2218%22 width=%224%22 height=%229%22 fill=%22%23a6e35a%22/%3E%3Crect x=%2211%22 y=%2210%22 width=%224%22 height=%2217%22 fill=%22%23a6e35a%22/%3E%3Crect x=%2217%22 y=%2214%22 width=%224%22 height=%2213%22 fill=%22%23f2a93b%22/%3E%3Crect x=%2223%22 y=%225%22 width=%224%22 height=%2222%22 fill=%22%23ff5a4f%22/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Silkscreen&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="topbar">
+    <div class="brand">
+      <span class="logo" aria-hidden="true"><i></i><i></i><i></i><i></i></span>
+      <div>
+        <h1>Sonify Anything</h1>
+        <p class="sub">bytes → sox → grains</p>
+      </div>
+    </div>
+    <div class="file-info" id="fileInfo">no file loaded</div>
+    <div class="status" id="soxStatus"><span class="led"></span><span>checking SoX…</span></div>
+  </div>
+
+  <div class="transport" role="toolbar" aria-label="Transport">
+    <div class="tgroup">
+      <button class="btn tbtn play" id="playBtn" disabled title="Play / stop the granular synth (space)"><span class="ico">▶</span><span class="lbl">Grains</span></button>
+      <button class="btn tbtn" id="directBtn" disabled title="Hear the SoX render as-is"><span class="ico">▷</span><span class="lbl">SoX</span></button>
+      <button class="btn tbtn rec" id="recBtn" disabled title="Record the live output"><span class="ico">●</span><span class="lbl">Rec</span></button>
+    </div>
+    <div class="tgroup lcds">
+      <div class="lcd" title="Playhead position in the grain region"><span>pos</span><b id="lcdPos">--.-</b></div>
+      <div class="lcd" title="Grains sounding right now"><span>vox</span><b id="lcdVox">000</b></div>
+      <div class="lcd hide-sm" title="Length of the SoX render"><span>len</span><b id="lcdLen">--.-s</b></div>
+    </div>
+    <canvas id="scope" class="hide-xs" aria-hidden="true"></canvas>
+    <canvas id="vu" aria-label="Output level"></canvas>
+  </div>
+</header>
+
+<main>
+  <section class="col col-a">
+    <!-- 00 source -->
+    <div class="panel drop o-drop" id="dropZone">
+      <input type="file" id="fileInput" hidden>
+      <div class="drop-inner">
+        <strong><span class="fine-only">Drop any file here</span><span class="coarse-only">Pick any file</span></strong>
+        <span class="drop-sub">an image, a PDF, an app, a spreadsheet… it's all just bytes</span>
+        <div class="row gap wrap center">
+          <button id="pickBtn" class="btn primary">Choose file</button>
+          <select id="exampleSel" class="btn" aria-label="Load an example">
+            <option value="">or try an example…</option>
+            <option value="page">This page's own source</option>
+            <option value="text">A paragraph of text</option>
+            <option value="noise">Random bytes</option>
+            <option value="struct">Structured patterns</option>
+          </select>
+        </div>
+      </div>
+    </div>
+
+    <!-- 03 data -->
+    <div class="panel o-data">
+      <div class="panel-head">
+        <h2><span class="tag">03</span>Data explorer</h2>
+        <div class="tabs" role="tablist">
+          <button class="tab active" data-tab="hex" role="tab" aria-selected="true">Hex</button>
+          <button class="tab" data-tab="text" role="tab" aria-selected="false">Text</button>
+        </div>
+      </div>
+      <div class="panel-body">
+        <div class="bytemap-wrap">
+          <canvas id="byteMap" aria-label="Map of the whole file — tap to jump"></canvas>
+          <div class="legend">
+            <span><i class="c-zero"></i>00</span>
+            <span><i class="c-ctl"></i>ctrl</span>
+            <span><i class="c-ws"></i>space</span>
+            <span><i class="c-asc"></i>text</span>
+            <span><i class="c-hi"></i>≥80</span>
+            <span><i class="c-ff"></i>FF</span>
+            <span class="muted">line = entropy · ticks = bytes sounding</span>
+          </div>
+        </div>
+
+        <div id="tab-hex" class="tabpane">
+          <div class="hex-head mono" id="hexHead" aria-hidden="true"></div>
+          <div class="hex-scroll mono" id="hexScroll" tabindex="0" aria-label="Hex editor">
+            <div class="hex-spacer" id="hexSpacer"></div>
+            <div class="hex-rows" id="hexRows"></div>
+            <div class="hex-empty" id="hexEmpty">load a file to explore its bytes</div>
+          </div>
+
+          <div class="editbar">
+            <button class="btn seg" id="modeBtn" title="Typing writes hex digits or text characters (Tab)">HEX</button>
+            <input id="poke" class="mono" placeholder="type to overwrite…" autocomplete="off" autocapitalize="off" autocorrect="off" spellcheck="false" aria-label="Type to overwrite bytes at the cursor">
+            <button class="btn seg" id="extendBtn" aria-pressed="false" title="When on, taps extend the selection (like shift-click)">Select</button>
+          </div>
+          <div class="sel-bar mono" id="selBar">—</div>
+
+          <div class="ops">
+            <div class="ops-row">
+              <label class="mini" for="opValue">value</label>
+              <input id="opValue" class="mono" value="20" size="8" aria-describedby="opHelp">
+              <span class="muted small" id="opHelp">used by XOR, Add, Fill, Smooth, Bit-crush, Sine, Repeat and Insert</span>
+            </div>
+            <div class="ops-grid">
+              <button class="op" data-op="randomise" title="Replace with random bytes">Randomise</button>
+              <button class="op" data-op="invert" title="Flip every bit (XOR FF)">Invert</button>
+              <button class="op" data-op="xor" title="XOR with the value as a hex pattern">XOR</button>
+              <button class="op" data-op="add" title="Add the value (decimal, wraps)">Add</button>
+              <button class="op" data-op="reverse" title="Reverse the byte order">Reverse</button>
+              <button class="op" data-op="sort" title="Sort ascending — makes sweeps">Sort</button>
+              <button class="op" data-op="shuffle" title="Shuffle the bytes">Shuffle</button>
+              <button class="op" data-op="smooth" title="Moving average, value = width">Smooth</button>
+              <button class="op" data-op="bits" title="Keep the top N bits, value = N">Bit-crush</button>
+              <button class="op" data-op="sine" title="Write a sine wave, value = period in bytes (min 4)">Sine</button>
+              <button class="op" data-op="ramp" title="Write a 00→FF ramp">Ramp</button>
+              <button class="op" data-op="zero" title="Silence for the current format">Silence</button>
+              <button class="op" data-op="fill" title="Fill with the value as a hex pattern, e.g. 00 7F FF">Fill</button>
+              <button class="op" data-op="repeat" title="Duplicate the selection N times, value = N">Repeat ×N</button>
+              <button class="op" data-op="insert" title="Insert the value as text at the cursor">Insert</button>
+              <button class="op danger" data-op="delete" title="Remove the selected bytes">Delete</button>
+            </div>
+            <p class="small muted" id="opScope">applies to the whole file — select bytes to narrow it</p>
+            <div class="ops-row">
+              <button class="btn" id="undoBtn" title="⌘Z">Undo</button>
+              <button class="btn" id="redoBtn" title="⇧⌘Z">Redo</button>
+              <button class="btn" id="revertBtn">Revert</button>
+              <button class="btn" id="saveBytesBtn">Save bytes</button>
+              <button class="btn accent" id="granSelBtn" title="Make the grains read only from the selected bytes">Granulate selection</button>
+            </div>
+            <p class="hint small muted fine-only">Click a byte and type hex. Click the ASCII column to type text. Drag or shift-click to select. Arrows move, ⌘Z undoes.</p>
+            <p class="hint small muted coarse-only">Tap a byte, then type in the box above. Turn on <b>Select</b> and tap a second byte to select a range.</p>
+          </div>
+        </div>
+
+        <div id="tab-text" class="tabpane" hidden>
+          <p class="small muted" id="textNote">Edit the file as Latin-1 text (one character per byte, so offsets stay the same).</p>
+          <textarea id="textEdit" class="mono" spellcheck="false" aria-label="File as text"></textarea>
+          <div class="ops-row">
+            <button class="btn primary" id="applyText">Apply text to bytes</button>
+            <button class="btn" id="reloadText">Reload from bytes</button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="col col-b">
+    <!-- 01 sox -->
+    <div class="panel o-sox">
+      <div class="panel-head">
+        <h2><span class="tag">01</span>SoX · interpret &amp; process</h2>
+        <label class="toggle"><input type="checkbox" id="autoRender" checked> auto-render</label>
+      </div>
+      <div class="panel-body">
+        <div class="grid3">
+          <label>read bytes as
+            <select id="sx-format">
+              <option value="u8">8-bit unsigned</option>
+              <option value="s8">8-bit signed</option>
+              <option value="mulaw">8-bit μ-law</option>
+              <option value="alaw">8-bit A-law</option>
+              <option value="s16le">16-bit signed LE</option>
+              <option value="s16be">16-bit signed BE</option>
+              <option value="u16le">16-bit unsigned LE</option>
+              <option value="s24le">24-bit signed LE</option>
+              <option value="s32le">32-bit signed LE</option>
+              <option value="f32le">32-bit float LE (wild)</option>
+              <option value="vox">OKI ADPCM (vox)</option>
+              <option value="ima">IMA ADPCM</option>
+            </select>
+          </label>
+          <label>sample rate
+            <select id="sx-rate">
+              <option>2000</option><option>4000</option><option selected>8000</option>
+              <option>11025</option><option>16000</option><option>22050</option>
+              <option>32000</option><option>44100</option><option>96000</option>
+            </select>
+          </label>
+          <label>channels
+            <select id="sx-channels"><option value="1">mono</option><option value="2">stereo</option></select>
+          </label>
+        </div>
+
+        <div class="sliders">
+          <div class="sl"><label for="sx-pitch">pitch</label><input type="range" id="sx-pitch" min="-2400" max="2400" step="100" value="0"><output data-unit="c"></output></div>
+          <div class="sl"><label for="sx-speed">speed</label><input type="range" id="sx-speed" min="0.1" max="4" step="0.05" value="1"><output data-unit="×"></output></div>
+          <div class="sl"><label for="sx-tempo">stretch</label><input type="range" id="sx-tempo" min="0.1" max="4" step="0.05" value="1"><output data-unit="×"></output></div>
+          <div class="sl"><label for="sx-lowpass">lowpass</label><input type="range" id="sx-lowpass" min="0" max="20000" step="100" value="6000"><output data-unit="Hz" data-zero="off"></output></div>
+          <div class="sl"><label for="sx-highpass">highpass</label><input type="range" id="sx-highpass" min="0" max="5000" step="10" value="40"><output data-unit="Hz"></output></div>
+          <div class="sl"><label for="sx-bass">bass</label><input type="range" id="sx-bass" min="-20" max="20" step="1" value="0"><output data-unit="dB"></output></div>
+          <div class="sl"><label for="sx-treble">treble</label><input type="range" id="sx-treble" min="-20" max="20" step="1" value="0"><output data-unit="dB"></output></div>
+          <div class="sl"><label for="sx-overdrive">overdrive</label><input type="range" id="sx-overdrive" min="0" max="60" step="1" value="0"><output data-unit=""></output></div>
+          <div class="sl"><label for="sx-reverb">reverb</label><input type="range" id="sx-reverb" min="0" max="100" step="1" value="40"><output data-unit="%"></output></div>
+          <div class="sl"><label for="sx-maxdur">max length</label><input type="range" id="sx-maxdur" min="5" max="600" step="5" value="120"><output data-unit="s"></output></div>
+        </div>
+        <div class="chips">
+          <label class="chip"><input type="checkbox" id="sx-reverse"> reverse</label>
+          <label class="chip"><input type="checkbox" id="sx-chorus"> chorus</label>
+          <label class="chip"><input type="checkbox" id="sx-phaser"> phaser</label>
+          <label class="chip"><input type="checkbox" id="sx-flanger"> flanger</label>
+          <label class="chip"><input type="checkbox" id="sx-echo"> echo</label>
+          <label class="chip"><input type="checkbox" id="sx-tremolo"> tremolo</label>
+          <label class="chip"><input type="checkbox" id="sx-selonly"> selection only</label>
+        </div>
+        <div class="row gap wrap">
+          <button class="btn primary" id="renderBtn">Render</button>
+          <button class="btn" id="dlWavBtn" disabled>Save WAV</button>
+          <span class="small muted" id="renderInfo"></span>
+        </div>
+        <pre class="cmd mono" id="soxCmd">sox …</pre>
+      </div>
+    </div>
+
+    <!-- 02 grains -->
+    <div class="panel o-gran">
+      <div class="panel-head">
+        <h2><span class="tag">02</span>Granular synth</h2>
+        <select id="presetSel" class="btn" aria-label="Presets"><option value="">presets…</option></select>
+      </div>
+      <div class="panel-body">
+        <div class="wave-wrap">
+          <canvas id="wave" aria-label="Waveform — drag to set the grain region"></canvas>
+          <div class="wave-bar">
+            <span class="small muted"><span class="fine-only">drag to set the grain region · click to move the playhead</span><span class="coarse-only">drag to set the region · tap to move the playhead</span></span>
+            <span class="lcd mini-lcd"><span>reg</span><b id="lcdReg">000–100%</b></span>
+            <button class="btn small-btn" id="regionReset">Full</button>
+          </div>
+        </div>
+
+        <div class="sliders gs">
+          <div class="sl"><label for="g-size">grain size</label><input type="range" id="g-size" min="5" max="1500" step="1" value="160"><output data-unit="ms"></output></div>
+          <div class="sl"><label for="g-sizeJitter">size jitter</label><input type="range" id="g-sizeJitter" min="0" max="1" step="0.01" value="0.3"><output data-pct></output></div>
+          <div class="sl"><label for="g-density">density</label><input type="range" id="g-density" min="0.5" max="200" step="0.5" value="18"><output data-unit="/s"></output></div>
+          <div class="sl"><label for="g-irregularity">irregularity</label><input type="range" id="g-irregularity" min="0" max="1" step="0.01" value="0.4"><output data-pct></output></div>
+          <div class="sl"><label for="g-spray">spray</label><input type="range" id="g-spray" min="0" max="1" step="0.01" value="0.15"><output data-pct></output></div>
+          <div class="sl"><label for="g-scan">scan speed</label><input type="range" id="g-scan" min="-0.2" max="0.2" step="0.001" value="0.01"><output data-unit="/s"></output></div>
+          <div class="sl"><label for="g-pitch">pitch</label><input type="range" id="g-pitch" min="-24" max="24" step="0.1" value="0"><output data-unit="st"></output></div>
+          <div class="sl"><label for="g-pitchJitter">pitch spread</label><input type="range" id="g-pitchJitter" min="0" max="24" step="0.1" value="0"><output data-unit="st"></output></div>
+          <div class="sl"><label for="g-reverseProb">reverse</label><input type="range" id="g-reverseProb" min="0" max="1" step="0.01" value="0.2"><output data-pct></output></div>
+          <div class="sl"><label for="g-spread">stereo</label><input type="range" id="g-spread" min="0" max="1" step="0.01" value="0.7"><output data-pct></output></div>
+          <div class="sl"><label for="g-drift">drift</label><input type="range" id="g-drift" min="0" max="1" step="0.01" value="0.25"><output data-pct></output></div>
+          <div class="sl"><label for="g-space">space</label><input type="range" id="g-space" min="0" max="1" step="0.01" value="0.45"><output data-pct></output></div>
+          <div class="sl"><label for="g-gain">volume</label><input type="range" id="g-gain" min="0" max="1.5" step="0.01" value="0.8"><output data-pct></output></div>
+        </div>
+        <div class="grid3">
+          <label>grain window
+            <select id="g-window">
+              <option value="hann">hann (smooth)</option>
+              <option value="tukey">tukey (solid)</option>
+              <option value="triangle">triangle</option>
+              <option value="perc">percussive</option>
+              <option value="swell">swell</option>
+            </select>
+          </label>
+          <label>pitch scale
+            <select id="g-scale">
+              <option value="free">free</option>
+              <option value="octaves">octaves</option>
+              <option value="fifths">fifths</option>
+              <option value="pentatonic">pentatonic</option>
+              <option value="major">major</option>
+              <option value="minor">minor</option>
+              <option value="wholetone">whole-tone</option>
+            </select>
+          </label>
+          <div class="label-like"><span>&nbsp;</span><button class="btn" id="randomiseGrains">Surprise me</button></div>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<div class="drop-overlay" id="dropOverlay"><div>drop to sonify</div></div>
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+<script src="app.js" type="module"></script>
+</body>
+</html>
