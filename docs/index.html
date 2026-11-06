@@ -12,7 +12,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Silkscreen&display=swap" rel="stylesheet">
 <!-- release version: bump on every deploy so browsers never mix old and new files -->
-<link rel="stylesheet" href="style.css?v=2026.11.06.1">
+<link rel="stylesheet" href="style.css?v=2026.11.06.2">
 </head>
 <body>
 <header class="top">
@@ -35,7 +35,6 @@
         <option value="eco">Eco</option>
       </select>
     </label>
-    <button class="btn icon-btn" id="aboutBtn" popovertarget="about" aria-controls="about" title="About &amp; credits">i</button>
     <div class="status" id="soxStatus"><span class="led"></span><span>checking SoX…</span></div>
   </div>
 
@@ -309,9 +308,9 @@
   </div>
 </div>
 <footer class="credit">
-  <span><b>Sonify Anything</b> by Santiago Rentería</span><span>made with <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a></span><span>sound by <a href="https://sourceforge.net/projects/sox/" target="_blank" rel="noopener">SoX</a> (GPL v2)</span><span><a href="https://github.com/hermes2507/sonify-anything" target="_blank" rel="noopener">source</a> · MIT</span><button class="linkish" popovertarget="about" id="aboutLink">credits</button>
+  <span><b>Sonify Anything</b> by Santiago Rentería</span><span>made with <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a></span><span>sound by <a href="https://sourceforge.net/projects/sox/" target="_blank" rel="noopener">SoX</a> (GPL v2)</span><span><a href="https://github.com/hermes2507/sonify-anything" target="_blank" rel="noopener">source</a> · MIT</span><button class="linkish" popovertarget="about" aria-controls="about" id="aboutLink">credits</button>
 </footer>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script src="app.js?v=2026.11.06.1" type="module"></script>
+<script src="app.js?v=2026.11.06.2" type="module"></script>
 </body>
 </html>

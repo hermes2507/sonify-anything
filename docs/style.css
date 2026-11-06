@@ -64,7 +64,6 @@ h1 { font-family: var(--pixel); font-weight: 400; font-size: 15px; letter-spacin
 .quality { flex-direction: row; align-items: center; gap: 6px; font-family: var(--mono); font-size: 11px; color: var(--muted); }
 .quality select { min-height: 28px; font-size: 12px; padding: 0 4px; }
 @media (pointer: coarse) { .quality select { min-height: var(--tap); } }
-.icon-btn { width: 28px; min-height: 28px; padding: 0; font: 13px var(--pixel); color: var(--amber); }
 .credit { max-width: 1600px; margin: 0 auto; padding: 0 16px calc(22px + env(safe-area-inset-bottom)); display: flex; flex-wrap: wrap; justify-content: center; gap: 2px 0; font: 11px var(--mono); color: var(--dim); text-align: center; }
 .credit > * + *::before { content: "·"; margin: 0 8px; color: #3a3833; }
 .credit b { font-weight: 400; color: var(--muted); }
@@ -72,7 +71,6 @@ h1 { font-family: var(--pixel); font-weight: 400; font-size: 15px; letter-spacin
 .credit a:hover, .linkish:hover { color: var(--amber); }
 .linkish { background: none; border: 0; padding: 0; font: inherit; cursor: pointer; }
 @media (pointer: coarse) { .linkish { padding: 14px 8px; margin: -14px -8px; } }
-@media (pointer: coarse) { .icon-btn { width: var(--tap); min-height: var(--tap); } }
 
 /* About dialog — a tracker-style panel; bottom sheet on phones */
 .about { display: none; position: fixed; inset: 0; margin: auto; height: fit-content; padding: 0; border: 1px solid #000; border-radius: var(--r); background: var(--panel); color: var(--text); width: min(520px, calc(100vw - 32px)); box-shadow: 0 20px 60px rgba(0,0,0,.6), inset 1px 1px 0 var(--bevel-hi); }
