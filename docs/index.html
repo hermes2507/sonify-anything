@@ -59,6 +59,7 @@
       <input type="file" id="fileInput" hidden>
       <div class="drop-inner">
         <strong><span class="fine-only">Drop any file here</span><span class="coarse-only">Pick any file</span></strong>
+        <span class="drop-name mono" id="dropName"></span>
         <span class="drop-sub">an image, a PDF, an app, a spreadsheet… it's all just bytes</span>
         <div class="row gap wrap center">
           <button id="pickBtn" class="btn primary">Choose file</button>
@@ -231,7 +232,7 @@
     <div class="panel o-gran">
       <div class="panel-head">
         <h2><span class="tag">02</span>Granular synth</h2>
-        <select id="presetSel" class="btn" aria-label="Presets"><option value="">presets…</option></select>
+        <label class="quality preset-label"><span>preset</span><select id="presetSel" class="btn" aria-label="Grain preset"></select></label>
       </div>
       <div class="panel-body">
         <div class="wave-wrap">

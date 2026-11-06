@@ -141,8 +141,17 @@ export async function renderBytes(bytes, q, signal) {
   const { args, fmt, chans } = buildArgs(q, '/in.bin', '/out.wav');
   const data = padToFrames(bytes, fmt, chans);
   const buf = data.buffer.slice(data.byteOffset, data.byteOffset + data.byteLength);
+  const id = seq + 1;
   const job = callWorker({ type: 'render', args, input: buf }, [buf]);
-  const abort = new Promise((_, rej) => signal?.addEventListener('abort', () => rej(new DOMException('aborted', 'AbortError'))));
+  const abort = new Promise((_, rej) => signal?.addEventListener('abort', () => {
+    // a newer render replaced this one: stop SoX mid-job instead of letting renders queue up
+    if (pending.has(id)) {
+      worker?.terminate(); worker = null;
+      for (const p of pending.values()) p.reject(new DOMException('aborted', 'AbortError'));
+      pending.clear();
+    }
+    rej(new DOMException('aborted', 'AbortError'));
+  }));
   const { wav } = await Promise.race([job, abort]);
   const cmd = ['sox', ...args].map((a) => (a === '/in.bin' ? '<input>' : a === '/out.wav' ? '<output.wav>' : a)).join(' ');
   return { wav, cmd };

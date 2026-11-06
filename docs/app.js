@@ -94,6 +94,7 @@ function loadBytes(bytes, name) {
 async function loadFile(file) {
   const buf = new Uint8Array(await file.slice(0, MAX_BYTES).arrayBuffer());
   loadBytes(buf, file.name);
+  if (file.size > MAX_BYTES) toast(`${file.name} is ${fmtBytes(file.size)} — loaded the first 64 MB`, true);
 }
 
 async function loadExample(kind) {
@@ -180,12 +181,14 @@ function undo() {
   if (!S.bytes || !S.undo.length) return;
   const e = S.undo.pop();
   S.redo.push(applyEntry(e, -1));
+  S.modified = S.undo.length > 0;
   S.sel = null; afterEdit({ render: true });
 }
 function redo() {
   if (!S.bytes || !S.redo.length) return;
   const e = S.redo.pop();
   S.undo.push(applyEntry(e, +1));
+  S.modified = true;
   S.sel = null; afterEdit({ render: true });
 }
 
@@ -248,6 +251,7 @@ function afterEdit({ render = false, force = false } = {}) {
   updateSelBar();
   const changed = S.modified || S.bytes.length !== S.original.length;
   $('#fileInfo').textContent = `${S.name} · ${fmtBytes(S.bytes.length)}${changed ? ' · modified' : ''}`;
+  $('#dropName').textContent = $('#fileInfo').textContent;
   if (force) buildByteMap(); else debouncedMap();
   S.textStale = true;
   if (render && (force || $('#autoRender').checked)) force ? renderSox() : debouncedRender();
@@ -729,8 +733,9 @@ function makeImpulse(seconds = Q.s.irSec, decay = 2.6) {
   return ir;
 }
 
-async function ensureAudio() {
-  if (ctx) return;
+let audioReady = null;
+function ensureAudio() { return (audioReady ||= initAudio()); } // one shared init, even if called concurrently
+async function initAudio() {
   try { if (navigator.audioSession) navigator.audioSession.type = 'playback'; } catch {}
   ctx = new AudioContext({ latencyHint: Q.s.latency });
   const revive = () => { if ((S.playing || S.direct) && ctx.state !== 'running') ctx.resume().catch(() => {}); };
@@ -831,7 +836,19 @@ const PRESETS = {
   'Machine': { size: 60, sizeJitter: 0, density: 40, irregularity: 0, spray: 0, scan: .03, pitch: 0, pitchJitter: 0, reverseProb: 0, spread: .3, drift: 0, space: .2, window: 'tukey', scale: 'free' },
   'Underwater': { size: 220, sizeJitter: .5, density: 20, irregularity: .6, spray: .4, scan: -.004, pitch: -19, pitchJitter: 2, reverseProb: .6, spread: .9, drift: .5, space: .8, window: 'swell', scale: 'free' },
 };
-for (const k in PRESETS) $('#presetSel').add(new Option(k, k));
+// "Default" = the settings the page starts with, captured from the controls
+const PRESET_KEYS = [...G_IDS.filter((k) => k !== 'gain'), 'window', 'scale'];
+const DEFAULT_PRESET = Object.fromEntries(PRESET_KEYS.map((k) => { const el = $('#g-' + k); return [k, el.type === 'range' ? +el.value : el.value]; }));
+const presetSel = $('#presetSel');
+presetSel.add(new Option('Default', 'Default'));
+for (const k in PRESETS) presetSel.add(new Option(k, k));
+const customOpt = new Option('Custom', 'custom');
+customOpt.disabled = true; // shown when settings no longer match a preset; can't be picked
+presetSel.add(customOpt);
+presetSel.value = 'Default';
+const markCustom = () => { if (presetSel.value !== 'custom') presetSel.value = 'custom'; };
+G_IDS.filter((k) => k !== 'gain').forEach((id) => $('#g-' + id).addEventListener('input', markCustom));
+['window', 'scale'].forEach((id) => $('#g-' + id).addEventListener('change', markCustom));
 
 function applyPreset(p) {
   for (const k in p) {
@@ -842,7 +859,11 @@ function applyPreset(p) {
   }
   sendParams();
 }
-$('#presetSel').addEventListener('change', (e) => { if (PRESETS[e.target.value]) applyPreset(PRESETS[e.target.value]); e.target.value = ''; });
+presetSel.addEventListener('change', (e) => {
+  const name = e.target.value;
+  const p = name === 'Default' ? DEFAULT_PRESET : PRESETS[name];
+  if (p) { applyPreset(p); toast(`Preset: ${name}`); }
+});
 $('#randomiseGrains').addEventListener('click', () => {
   const r = (a, b) => a + Math.random() * (b - a);
   const lg = (a, b) => Math.exp(r(Math.log(a), Math.log(b)));
@@ -856,6 +877,7 @@ $('#randomiseGrains').addEventListener('click', () => {
   // pick a random region too
   const w = r(.05, .6), s0 = r(0, 1 - w);
   S.region = [s0, s0 + w]; sendParams();
+  markCustom();
 });
 
 /* =========================== transport =========================== */
@@ -1153,7 +1175,7 @@ window.addEventListener('drop', (e) => {
   if (f) loadFile(f);
 });
 window.addEventListener('keydown', (e) => {
-  if (e.target.matches('input, textarea, select') || e.target === hexScroll) return;
+  if (e.target.matches('input, textarea, select, button, label, .chip, [contenteditable]') || e.target === hexScroll) return;
   if (e.code === 'Space' && !$('#playBtn').disabled) { e.preventDefault(); $('#playBtn').click(); }
   if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'z') { e.preventDefault(); e.shiftKey ? redo() : undo(); }
 });
