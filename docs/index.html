@@ -32,6 +32,7 @@
         <option value="eco">Eco</option>
       </select>
     </label>
+    <button class="btn icon-btn" id="aboutBtn" aria-haspopup="dialog" aria-controls="about" title="About &amp; credits">i</button>
     <div class="status" id="soxStatus"><span class="led"></span><span>checking SoX…</span></div>
   </div>
 
@@ -288,12 +289,22 @@
 </main>
 
 <div class="drop-overlay" id="dropOverlay"><div>drop to sonify</div></div>
-<footer class="foot">
-  <span>Made by Santiago Rentería with <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a></span>
-  <span>Powered by <a href="https://sourceforge.net/projects/sox/" target="_blank" rel="noopener">SoX</a> (GPL v2) compiled to WebAssembly with Emscripten</span>
-  <span><a href="https://github.com/hermes2507/sonify-anything" target="_blank" rel="noopener">Source &amp; credits</a> · MIT</span>
-  <span class="muted" id="qualityInfo"></span>
-</footer>
+<dialog class="about" id="about" aria-labelledby="aboutTitle">
+  <div class="panel-head">
+    <h2 id="aboutTitle"><span class="tag">i</span>About</h2>
+    <button class="btn small-btn" id="aboutClose" aria-label="Close">✕</button>
+  </div>
+  <div class="about-body">
+    <p class="about-lead">Made by <b>Santiago Rentería</b> with <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a>.</p>
+    <dl class="about-list">
+      <dt>sound</dt><dd><a href="https://sourceforge.net/projects/sox/" target="_blank" rel="noopener">SoX 14.4.2</a> by Chris Bagwell &amp; contributors (GPL v2), compiled to WebAssembly with <a href="https://emscripten.org/" target="_blank" rel="noopener">Emscripten</a> · Web Audio &amp; AudioWorklet</dd>
+      <dt>type</dt><dd>JetBrains Mono · Silkscreen (SIL OFL)</dd>
+      <dt>ideas</dt><dd><a href="https://pcarroll.au/tools/rama-l/" target="_blank" rel="noopener">RAMA-L</a> by Pat Carroll · Renoise &amp; classic trackers · granular synthesis after Xenakis &amp; Roads</dd>
+      <dt>this device</dt><dd class="mono" id="qualityInfo"></dd>
+    </dl>
+    <p class="about-links"><a href="https://github.com/hermes2507/sonify-anything" target="_blank" rel="noopener">Source, full credits &amp; extending guide</a> · <a href="https://github.com/hermes2507/sonify-anything/blob/main/LICENSE" target="_blank" rel="noopener">MIT licence</a></p>
+  </div>
+</dialog>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
 <script src="app.js" type="module"></script>
 </body>

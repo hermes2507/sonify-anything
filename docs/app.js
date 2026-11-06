@@ -1220,3 +1220,9 @@ function onQualityChange(why) {
 $('#qualitySel').addEventListener('change', (e) => Q.setMode(e.target.value));
 showQuality();
 window.__sonify = { Q }; // handy for debugging in the console
+
+/* =========================== about dialog =========================== */
+const about = $('#about');
+$('#aboutBtn').addEventListener('click', () => { showQuality(); about.showModal(); });
+$('#aboutClose').addEventListener('click', () => about.close());
+about.addEventListener('click', (e) => { if (e.target === about) about.close(); }); // click on the backdrop
