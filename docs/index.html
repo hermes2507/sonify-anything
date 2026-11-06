@@ -4,12 +4,15 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="theme-color" content="#141414">
+<meta name="author" content="Santiago Rentería">
+<meta name="description" content="Sonify Anything by Santiago Rentería, made with Claude Code: drop any file and turn its bytes into a soundscape with SoX (WebAssembly) and a granular synth.">
 <title>Sonify Anything</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%224%22 fill=%22%23262626%22/%3E%3Crect x=%225%22 y=%2218%22 width=%224%22 height=%229%22 fill=%22%23a6e35a%22/%3E%3Crect x=%2211%22 y=%2210%22 width=%224%22 height=%2217%22 fill=%22%23a6e35a%22/%3E%3Crect x=%2217%22 y=%2214%22 width=%224%22 height=%2213%22 fill=%22%23f2a93b%22/%3E%3Crect x=%2223%22 y=%225%22 width=%224%22 height=%2222%22 fill=%22%23ff5a4f%22/%3E%3C/svg%3E">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Silkscreen&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css">
+<!-- release version: bump on every deploy so browsers never mix old and new files -->
+<link rel="stylesheet" href="style.css?v=2026.11.06.1">
 </head>
 <body>
 <header class="top">
@@ -32,7 +35,7 @@
         <option value="eco">Eco</option>
       </select>
     </label>
-    <button class="btn icon-btn" id="aboutBtn" aria-haspopup="dialog" aria-controls="about" title="About &amp; credits">i</button>
+    <button class="btn icon-btn" id="aboutBtn" popovertarget="about" aria-controls="about" title="About &amp; credits">i</button>
     <div class="status" id="soxStatus"><span class="led"></span><span>checking SoX…</span></div>
   </div>
 
@@ -289,10 +292,10 @@
 </main>
 
 <div class="drop-overlay" id="dropOverlay"><div>drop to sonify</div></div>
-<dialog class="about" id="about" aria-labelledby="aboutTitle">
+<div class="about" id="about" popover role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
   <div class="panel-head">
     <h2 id="aboutTitle"><span class="tag">i</span>About</h2>
-    <button class="btn small-btn" id="aboutClose" aria-label="Close">✕</button>
+    <button class="btn small-btn" id="aboutClose" popovertarget="about" popovertargetaction="hide" aria-label="Close">✕</button>
   </div>
   <div class="about-body">
     <p class="about-lead">Made by <b>Santiago Rentería</b> with <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a>.</p>
@@ -304,8 +307,11 @@
     </dl>
     <p class="about-links"><a href="https://github.com/hermes2507/sonify-anything" target="_blank" rel="noopener">Source, full credits &amp; extending guide</a> · <a href="https://github.com/hermes2507/sonify-anything/blob/main/LICENSE" target="_blank" rel="noopener">MIT licence</a></p>
   </div>
-</dialog>
+</div>
+<footer class="credit">
+  <span><b>Sonify Anything</b> by Santiago Rentería</span><span>made with <a href="https://claude.com/claude-code" target="_blank" rel="noopener">Claude Code</a></span><span>sound by <a href="https://sourceforge.net/projects/sox/" target="_blank" rel="noopener">SoX</a> (GPL v2)</span><span><a href="https://github.com/hermes2507/sonify-anything" target="_blank" rel="noopener">source</a> · MIT</span><button class="linkish" popovertarget="about" id="aboutLink">credits</button>
+</footer>
 <div class="toast" id="toast" role="status" aria-live="polite"></div>
-<script src="app.js" type="module"></script>
+<script src="app.js?v=2026.11.06.1" type="module"></script>
 </body>
 </html>

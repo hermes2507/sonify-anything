@@ -1,9 +1,10 @@
 // Runs SoX 14.4.2 (compiled to WebAssembly with emscripten) off the main thread.
 // Each render gets a fresh SoX instance — SoX's main() isn't re-entrant — but the
 // compiled WebAssembly module is cached, so a new instance costs only milliseconds.
-import createSox from './sox/sox.js';
+const V = new URL(import.meta.url).search; // release tag, see index.html
+const { default: createSox } = await import('./sox/sox.js' + V);
 
-const wasmUrl = new URL('./sox/sox.wasm', import.meta.url);
+const wasmUrl = new URL('./sox/sox.wasm' + V, import.meta.url);
 let compiled = null;
 
 async function getCompiled() {

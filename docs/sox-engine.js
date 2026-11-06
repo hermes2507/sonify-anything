@@ -88,7 +88,7 @@ const pending = new Map();
 
 function getWorker() {
   if (worker) return worker;
-  worker = new Worker(new URL('./sox-worker.js', import.meta.url), { type: 'module' });
+  worker = new Worker(new URL('./sox-worker.js' + new URL(import.meta.url).search, import.meta.url), { type: 'module' });
   worker.onmessage = (e) => {
     const { id, ok, wav, error, version } = e.data;
     const p = pending.get(id);

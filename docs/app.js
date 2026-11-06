@@ -2,8 +2,11 @@
 // Flow: file bytes → (data explorer edits) → SoX on the local server → WAV →
 // custom AudioWorklet granular engine → space (convolver) → speakers / recorder.
 
-import { renderBytes, detectEngine } from './sox-engine.js';
-import { Quality, TIERS, isIOS } from './quality.js';
+// Load sibling modules with the same ?v= release tag as this file, so a cached
+// old module can never be mixed with a new one after a deploy.
+const V = new URL(import.meta.url).search;
+const { renderBytes, detectEngine } = await import('./sox-engine.js' + V);
+const { Quality, TIERS, isIOS } = await import('./quality.js' + V);
 
 // Adaptive quality (benchmark → tier; then live adjustments). See quality.js.
 const Q = new Quality({ onChange: (why) => onQualityChange(why) });
@@ -742,7 +745,7 @@ async function initAudio() {
   ctx.addEventListener('statechange', () => { if (ctx.state === 'interrupted') setTimeout(revive, 500); });
   document.addEventListener('visibilitychange', () => { if (!document.hidden) revive(); });
   window.addEventListener('pointerdown', revive, { passive: true });
-  await ctx.audioWorklet.addModule('granular-worklet.js');
+  await ctx.audioWorklet.addModule('granular-worklet.js' + V);
   granNode = new AudioWorkletNode(ctx, 'granular', { numberOfInputs: 0, outputChannelCount: [2] });
   master = ctx.createGain();
   dry = ctx.createGain(); wet = ctx.createGain();
@@ -1221,8 +1224,21 @@ $('#qualitySel').addEventListener('change', (e) => Q.setMode(e.target.value));
 showQuality();
 window.__sonify = { Q }; // handy for debugging in the console
 
-/* =========================== about dialog =========================== */
+/* =========================== about panel =========================== */
+// Opens with the native popover attribute (no JS required). This only refreshes
+// the quality line, and provides a fallback for browsers without popover support.
 const about = $('#about');
-$('#aboutBtn').addEventListener('click', () => { showQuality(); about.showModal(); });
-$('#aboutClose').addEventListener('click', () => about.close());
-about.addEventListener('click', (e) => { if (e.target === about) about.close(); }); // click on the backdrop
+about.addEventListener('toggle', (e) => { if (e.newState === 'open') showQuality(); });
+if (!HTMLElement.prototype.hasOwnProperty('popover')) {
+  let scrim = null;
+  const close = () => { about.classList.remove('open'); scrim?.remove(); scrim = null; };
+  const open = () => {
+    showQuality(); about.classList.add('open');
+    scrim = document.createElement('div'); scrim.className = 'about-scrim'; scrim.addEventListener('click', close);
+    document.body.appendChild(scrim);
+  };
+  for (const b of document.querySelectorAll('[popovertarget="about"]')) {
+    b.addEventListener('click', () => (b.getAttribute('popovertargetaction') === 'hide' || about.classList.contains('open') ? close() : open()));
+  }
+  window.addEventListener('keydown', (e) => { if (e.key === 'Escape') close(); });
+}

@@ -83,6 +83,10 @@ The **quality** menu in the header overrides the automatic choice, and the foote
 
 The app is plain ES modules with no build step. Edit the files in `docs/` and reload.
 
+**Releasing:** bump the `?v=` tag on `app.js` and `style.css` in `docs/index.html` before every deploy.
+Every other module, the worker, the worklet and `sox.wasm` inherit that tag. Without the bump, GitHub Pages'
+10-minute browser cache can mix a new page with old scripts.
+
 | file | what it does |
 |---|---|
 | `docs/index.html` | markup: controls are plain `<input>`/`<select>` elements with ids like `sx-…` (SoX) and `g-…` (grains) |
